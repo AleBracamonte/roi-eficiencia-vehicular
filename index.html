@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador de Ahorro de Combustible</title>
+    <!-- Chart.js para gráficos interactivos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts para una tipografía limpia y moderna -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
@@ -158,7 +160,7 @@
         input:checked + .slider { background-color: var(--brand-primary); }
         input:checked + .slider:before { transform: translateX(24px); }
 
-        /* Matriz de KPIS / Ahorros */
+        /* Matriz de KPIs / Ahorros */
         .savings-matrix {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -212,27 +214,29 @@
     </header>
 
     <div class="dashboard-grid">
+        <!-- Panel de Control Izquierdo -->
         <aside class="card">
             <div class="card-title">Parámetros del Vehículo</div>
             
             <div class="form-group">
                 <label for="km-mensuales">Kilómetros Recorridos Mensuales</label>
                 <div class="input-wrapper">
-                    <input type="number" id="km-mensuales" value="2000" min="1">
+                    <!-- Default: 15000 / 12 = 1250 km al mes -->
+                    <input type="number" id="km-mensuales" value="1250" min="1">
                 </div>
             </div>
 
             <div class="form-group">
                 <label for="rendimiento-actual">Rendimiento Auto Actual (km/L)</label>
                 <div class="input-wrapper">
-                    <input type="number" id="rendimiento-actual" value="10" step="0.1" min="0.1">
+                    <input type="number" id="rendimiento-actual" value="7" step="0.1" min="0.1">
                 </div>
             </div>
 
             <div class="form-group">
                 <label for="rendimiento-nuevo">Rendimiento Auto Nuevo (km/L)</label>
                 <div class="input-wrapper">
-                    <input type="number" id="rendimiento-nuevo" value="16" step="0.1" min="0.1">
+                    <input type="number" id="rendimiento-nuevo" value="15" step="0.1" min="0.1">
                 </div>
             </div>
 
@@ -251,21 +255,21 @@
             <div class="form-group">
                 <label for="precio-magna">Precio Magna base ($/L)</label>
                 <div class="input-wrapper">
-                    <input type="number" id="precio-magna" value="24.10" step="0.01">
+                    <input type="number" id="precio-magna" value="25.00" step="0.01">
                 </div>
             </div>
 
             <div class="form-group">
                 <label for="precio-premium">Precio Premium base ($/L)</label>
                 <div class="input-wrapper">
-                    <input type="number" id="precio-premium" value="26.15" step="0.01">
+                    <input type="number" id="precio-premium" value="29.99" step="0.01">
                 </div>
             </div>
 
             <div class="toggle-container">
                 <div>
                     <label style="font-weight: 500; font-size: 0.9rem;">Habilitar aumento proyectado</label>
-                    <p style="font-size: 0.75rem; color: var(--text-muted);">Tendencia: y = 0.0209x + 13.1</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted);">Tendencia semanal: y = 0.0209x + 13.1</p>
                 </div>
                 <label class="switch">
                     <input type="checkbox" id="proyeccion-check" checked>
@@ -274,9 +278,10 @@
             </div>
         </aside>
 
+        <!-- Panel de Gráficos y Resultados Derecho -->
         <main style="display: flex; flex-direction: column; gap: 1.5rem;">
             <div class="card">
-                <div class="card-title">Proyección de Gasto Acumulado en el Tiempo</div>
+                <div class="card-title">Proyección de Gasto Acumulado Temporal (Semanas Fiscales YYYY.WW)</div>
                 <div class="chart-container">
                     <canvas id="canvas-grafico"></canvas>
                 </div>
@@ -309,8 +314,7 @@
 
 <script>
 /**
- * ARQUITECTURA SÓLIDA - CORE ENGINE
- * Encapsulamos la lógica del simulador para evitar contaminación global de variables.
+ * ARQUITECTURA CORE ENGINE (SEMANAS FISCALES YYYY.WW)
  */
 class SimuladorConsumo {
     constructor() {
@@ -341,82 +345,103 @@ class SimuladorConsumo {
     }
 
     initEventListeners() {
-        // Ejecución reactiva: cualquier cambio actualiza el modelo inmediatamente
         Object.values(this.inputs).forEach(input => {
             input.addEventListener('input', () => this.ejecutarSimulacion());
         });
     }
 
     /**
-     * Resuelve el algoritmo de tendencia matemática lineal solicitada.
-     * y = 0.0209x + 13.1
-     * Ajustamos x como variable temporal indexada (meses transcurridos).
+     * Calcula analíticamente la semana exacta del año (1 a 52).
      */
-    calcularPrecioGasolina(mes, tipoGasolina, usarTendencia) {
-        const precioBase = tipoGasolina === 'premium' 
+    obtenerSemanaAño(fecha) {
+        const primeroDeAnio = new Date(fecha.getFullYear(), 0, 1);
+        const diasTranscurridos = Math.floor((fecha - primeroDeAnio) / (24 * 60 * 60 * 1000));
+        let semana = Math.ceil((diasTranscurridos + primeroDeAnio.getDay() + 1) / 7);
+        return Math.min(Math.max(semana, 1), 52);
+    }
+
+    /**
+     * Mapea el objeto Date al formato analítico decimal exacto YYYY.WW.
+     */
+    convertirFechaAYYYYWW(fecha) {
+        const anio = fecha.getFullYear();
+        const semana = this.obtenerSemanaAño(fecha);
+        return anio + (semana / 100);
+    }
+
+    /**
+     * Resuelve la función matemática: y = 0.0209x + 13.1
+     * Extrae el delta de crecimiento basado en la escala YYYY.WW.
+     */
+    calcularPrecioGasolina(fechaEvaluada, tipoGasolina, usarTendencia) {
+        const precioBaseInput = tipoGasolina === 'premium' 
             ? parseFloat(this.inputs.precioPremium.value) 
             : parseFloat(this.inputs.precioMagna.value);
 
-        if (!usarTendencia) return precioBase;
+        if (!usarTendencia) return precioBaseInput;
 
-        // Para evitar saltos abruptos en el mes 0, calculamos el delta basándonos en x = mes.
-        // La ecuación dada y = 0.0209x + 13.1 tiene un intercepto de 13.1. 
-        // Para acoplarla al precio dinámico que ponga el usuario, calculamos el incremento mensual relativo.
-        const deltaTendencia = (0.0209 * mes);
-        return precioBase + deltaTendencia;
-    }
+        const xHoy = this.convertirFechaAYYYYWW(new Date());
+        const xFuturo = this.convertirFechaAYYYYWW(fechaEvaluada);
 
-    generarFechasProyeccion(totalMeses) {
-        const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-        let fechaActual = new Date();
-        const ejeX = [];
+        const precioFormulaHoy = (0.0209 * xHoy) + 13.1;
+        const precioFormulaFuturo = (0.0209 * xFuturo) + 13.1;
 
-        for (let i = 0; i <= totalMeses; i++) {
-            let mesIndex = (fechaActual.getMonth() + i) % 12;
-            let anioOffset = Math.floor((fechaActual.getMonth() + i) / 12);
-            let anioCorto = (fechaActual.getFullYear() + anioOffset).toString().substring(2);
-            ejeX.push(`${nombresMeses[mesIndex]} '${anioCorto}`);
-        }
-        return ejeX;
+        const deltaCrecimiento = precioFormulaFuturo - precioFormulaHoy;
+        return precioBaseInput + deltaCrecimiento;
     }
 
     ejecutarSimulacion() {
-        const totalMeses = 60; // Proyección máxima a 5 años
-        const kmMes = parseFloat(this.inputs.kmMensuales.value) || 0;
+        const totalSemanas = 260; // 5 Años proyectados de forma exacta (5 * 52)
+        const kmMensuales = parseFloat(this.inputs.kmMensuales.value) || 0;
+        
+        // Conversión a escala semanal (mes promedio = 4.3333 semanas)
+        const kmSemanales = kmMensuales / 4.3333; 
+        
         const rendActual = parseFloat(this.inputs.rendimientoActual.value) || 1;
         const rendNuevo = parseFloat(this.inputs.rendimientoNuevo.value) || 1;
         const tipoGas = this.inputs.tipoGasolina.value;
         const usarTendencia = this.inputs.permitirTendencia.checked;
 
-        // Cálculos volumétricos mensuales (Litros requeridos)
-        const litrosMesActual = kmMes / rendActual;
-        const litrosMesNuevo = kmMes / rendNuevo;
+        const litrosSemanaActual = kmSemanales / rendActual;
+        const litrosSemanaNuevo = kmSemanales / rendNuevo;
 
         let datosGastoActual = [0];
         let datosGastoNuevo = [0];
-        let ahorroAcumulado = {};
-
+        let etiquetasEjeX = ["Hoy"];
+        
         let acumuladoActual = 0;
         let acumuladoNuevo = 0;
+        let ahorroAcumulado = {};
 
-        for (let mes = 1; mes <= totalMeses; mes++) {
-            const precioLitro = this.calcularPrecioGasolina(mes, tipoGas, usarTendencia);
+        let fechaIteracion = new Date();
 
-            acumuladoActual += litrosMesActual * precioLitro;
-            acumuladoNuevo += litrosMesNuevo * precioLitro;
+        for (let semana = 1; semana <= totalSemanas; semana++) {
+            fechaIteracion.setDate(fechaIteracion.getDate() + 7);
 
-            datosGastoActual.push(Math.round(acumuladoActual));
-            datosGastoNuevo.push(Math.round(acumuladoNuevo));
+            const precioLitro = this.calcularPrecioGasolina(fechaIteracion, tipoGas, usarTendencia);
 
-            // Capturar puntos clave de control temporal solicitados
-            if (mes === 3)  ahorroAcumulado['3m'] = acumuladoActual - acumuladoNuevo;
-            if (mes === 6)  ahorroAcumulado['6m'] = acumuladoActual - acumuladoNuevo;
-            if (mes === 12) ahorroAcumulado['1a'] = acumuladoActual - acumuladoNuevo;
-            if (mes === 60) ahorroAcumulado['5a'] = acumuladoActual - acumuladoNuevo;
+            acumuladoActual += litrosSemanaActual * precioLitro;
+            acumuladoNuevo += litrosSemanaNuevo * precioLitro;
+
+            // Filtro de densidad para optimización del gráfico (Muestra datos cada 2 semanas fiscales)
+            if (semana % 2 === 0 || semana === totalSemanas) {
+                datosGastoActual.push(Math.round(acumuladoActual));
+                datosGastoNuevo.push(Math.round(acumuladoNuevo));
+                
+                const anio = fechaIteracion.getFullYear();
+                const semNum = this.obtenerSemanaAño(fechaIteracion).toString().padStart(2, '0');
+                etiquetasEjeX.push(`${anio}.W${semNum}`);
+            }
+
+            // Hitos temporales precisos en formato de semanas
+            if (semana === 13)  ahorroAcumulado['3m'] = acumuladoActual - acumuladoNuevo;
+            if (semana === 26)  ahorroAcumulado['6m'] = acumuladoActual - acumuladoNuevo;
+            if (semana === 52)  ahorroAcumulado['1a'] = acumuladoActual - acumuladoNuevo;
+            if (semana === 260) ahorroAcumulado['5a'] = acumuladoActual - acumuladoNuevo;
         }
 
         this.renderizarPanelesUI(ahorroAcumulado);
-        this.actualizarGrafico(datosGastoActual, datosGastoNuevo);
+        this.actualizarGrafico(etiquetasEjeX, datosGastoActual, datosGastoNuevo);
     }
 
     renderizarPanelesUI(ahorros) {
@@ -426,20 +451,19 @@ class SimuladorConsumo {
             maximumFractionDigits: 0
         });
 
-        this.outputs.m3.innerText = formatoMoneda.format(ahorros['3m']);
-        this.outputs.m6.innerText = formatoMoneda.format(ahorros['6m']);
-        this.outputs.a1.innerText = formatoMoneda.format(ahorros['1a']);
-        this.outputs.a5.innerText = formatoMoneda.format(ahorros['5a']);
+        this.outputs.m3.innerText = formatoMoneda.format(ahorros['3m'] || 0);
+        this.outputs.m6.innerText = formatoMoneda.format(ahorros['6m'] || 0);
+        this.outputs.a1.innerText = formatoMoneda.format(ahorros['1a'] || 0);
+        this.outputs.a5.innerText = formatoMoneda.format(ahorros['5a'] || 0);
     }
 
     initChart() {
         const ctx = document.getElementById('canvas-grafico').getContext('2d');
-        const etiquetasEjeX = this.generarFechasProyeccion(60);
 
         this.chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: etiquetasEjeX,
+                labels: [],
                 datasets: [
                     {
                         label: 'Gasto Vehículo Actual',
@@ -495,14 +519,14 @@ class SimuladorConsumo {
         });
     }
 
-    actualizarGrafico(datosActual, datosNuevo) {
+    actualizarGrafico(etiquetas, datosActual, datosNuevo) {
+        this.chart.data.labels = etiquetas;
         this.chart.data.datasets[0].data = datosActual;
         this.chart.data.datasets[1].data = datosNuevo;
-        this.chart.update('none'); // Update fluido sin animaciones toscas al escribir
+        this.chart.update('none');
     }
 }
 
-// Inicialización del core al cargar el DOM
 document.addEventListener('DOMContentLoaded', () => {
     new SimuladorConsumo();
 });
