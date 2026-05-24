@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Ahorro de Combustible</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #f8fafc;
+            --surface-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --brand-primary: #2563eb;
+            --brand-success: #10b981;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            padding: 2rem 1rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-muted);
+        }
+
+        /* Layout Grid Principal */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (min-width: 968px) {
+            .dashboard-grid {
+                grid-template-columns: 350px 1fr;
+            }
+        }
+
+        /* Tarjetas / Paneles */
+        .card {
+            background: var(--surface-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1.25rem;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        /* Inputs y Formularios */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-wrapper input, .input-wrapper select {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-wrapper input:focus {
+            border-color: var(--brand-primary);
+        }
+
+        /* Toggle Switch Estilizado */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--border-color);
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider { background-color: var(--brand-primary); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        /* Matriz de KPIS / Ahorros */
+        .savings-matrix {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        @media (min-width: 640px) {
+            .savings-matrix {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        .kpi-card {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .kpi-card .timeframe {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--brand-success);
+            font-weight: 600;
+        }
+
+        .kpi-card .amount {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #166534;
+            margin-top: 0.25rem;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Análisis de Retorno de Inversión Energética</h1>
+        <p>Proyección interactiva comparativa de consumo de combustible (MXN)</p>
+    </header>
+
+    <div class="dashboard-grid">
+        <aside class="card">
+            <div class="card-title">Parámetros del Vehículo</div>
+            
+            <div class="form-group">
+                <label for="km-mensuales">Kilómetros Recorridos Mensuales</label>
+                <div class="input-wrapper">
+                    <input type="number" id="km-mensuales" value="2000" min="1">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="rendimiento-actual">Rendimiento Auto Actual (km/L)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="rendimiento-actual" value="10" step="0.1" min="0.1">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="rendimiento-nuevo">Rendimiento Auto Nuevo (km/L)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="rendimiento-nuevo" value="16" step="0.1" min="0.1">
+                </div>
+            </div>
+
+            <div class="card-title" style="margin-top: 1.5rem;">Precios Base Combustible (MXN)</div>
+
+            <div class="form-group">
+                <label for="tipo-gasolina">Tipo de Gasolina Empleada</label>
+                <div class="input-wrapper">
+                    <select id="tipo-gasolina">
+                        <option value="magna" selected>Magna (Regular)</option>
+                        <option value="premium">Premium</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="precio-magna">Precio Magna base ($/L)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="precio-magna" value="24.10" step="0.01">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="precio-premium">Precio Premium base ($/L)</label>
+                <div class="input-wrapper">
+                    <input type="number" id="precio-premium" value="26.15" step="0.01">
+                </div>
+            </div>
+
+            <div class="toggle-container">
+                <div>
+                    <label style="font-weight: 500; font-size: 0.9rem;">Habilitar aumento proyectado</label>
+                    <p style="font-size: 0.75rem; color: var(--text-muted);">Tendencia: y = 0.0209x + 13.1</p>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="proyeccion-check" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </aside>
+
+        <main style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div class="card">
+                <div class="card-title">Proyección de Gasto Acumulado en el Tiempo</div>
+                <div class="chart-container">
+                    <canvas id="canvas-grafico"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Ahorro Neto Acumulado para el Cliente</div>
+                <div class="savings-matrix">
+                    <div class="kpi-card">
+                        <div class="timeframe">3 Meses</div>
+                        <div class="amount" id="ahorro-3m">$0.00</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="timeframe">6 Meses</div>
+                        <div class="amount" id="ahorro-6m">$0.00</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="timeframe">1 Año</div>
+                        <div class="amount" id="ahorro-1a">$0.00</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="timeframe">5 Años</div>
+                        <div class="amount" id="ahorro-5a">$0.00</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<script>
+/**
+ * ARQUITECTURA SÓLIDA - CORE ENGINE
+ * Encapsulamos la lógica del simulador para evitar contaminación global de variables.
+ */
+class SimuladorConsumo {
+    constructor() {
+        this.chart = null;
+        this.initDOMReferences();
+        this.initEventListeners();
+        this.initChart();
+        this.ejecutarSimulacion();
+    }
+
+    initDOMReferences() {
+        this.inputs = {
+            kmMensuales: document.getElementById('km-mensuales'),
+            rendimientoActual: document.getElementById('rendimiento-actual'),
+            rendimientoNuevo: document.getElementById('rendimiento-nuevo'),
+            tipoGasolina: document.getElementById('tipo-gasolina'),
+            precioMagna: document.getElementById('precio-magna'),
+            precioPremium: document.getElementById('precio-premium'),
+            permitirTendencia: document.getElementById('proyeccion-check')
+        };
+
+        this.outputs = {
+            m3: document.getElementById('ahorro-3m'),
+            m6: document.getElementById('ahorro-6m'),
+            a1: document.getElementById('ahorro-1a'),
+            a5: document.getElementById('ahorro-5a')
+        };
+    }
+
+    initEventListeners() {
+        // Ejecución reactiva: cualquier cambio actualiza el modelo inmediatamente
+        Object.values(this.inputs).forEach(input => {
+            input.addEventListener('input', () => this.ejecutarSimulacion());
+        });
+    }
+
+    /**
+     * Resuelve el algoritmo de tendencia matemática lineal solicitada.
+     * y = 0.0209x + 13.1
+     * Ajustamos x como variable temporal indexada (meses transcurridos).
+     */
+    calcularPrecioGasolina(mes, tipoGasolina, usarTendencia) {
+        const precioBase = tipoGasolina === 'premium' 
+            ? parseFloat(this.inputs.precioPremium.value) 
+            : parseFloat(this.inputs.precioMagna.value);
+
+        if (!usarTendencia) return precioBase;
+
+        // Para evitar saltos abruptos en el mes 0, calculamos el delta basándonos en x = mes.
+        // La ecuación dada y = 0.0209x + 13.1 tiene un intercepto de 13.1. 
+        // Para acoplarla al precio dinámico que ponga el usuario, calculamos el incremento mensual relativo.
+        const deltaTendencia = (0.0209 * mes);
+        return precioBase + deltaTendencia;
+    }
+
+    generarFechasProyeccion(totalMeses) {
+        const nombresMeses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        let fechaActual = new Date();
+        const ejeX = [];
+
+        for (let i = 0; i <= totalMeses; i++) {
+            let mesIndex = (fechaActual.getMonth() + i) % 12;
+            let anioOffset = Math.floor((fechaActual.getMonth() + i) / 12);
+            let anioCorto = (fechaActual.getFullYear() + anioOffset).toString().substring(2);
+            ejeX.push(`${nombresMeses[mesIndex]} '${anioCorto}`);
+        }
+        return ejeX;
+    }
+
+    ejecutarSimulacion() {
+        const totalMeses = 60; // Proyección máxima a 5 años
+        const kmMes = parseFloat(this.inputs.kmMensuales.value) || 0;
+        const rendActual = parseFloat(this.inputs.rendimientoActual.value) || 1;
+        const rendNuevo = parseFloat(this.inputs.rendimientoNuevo.value) || 1;
+        const tipoGas = this.inputs.tipoGasolina.value;
+        const usarTendencia = this.inputs.permitirTendencia.checked;
+
+        // Cálculos volumétricos mensuales (Litros requeridos)
+        const litrosMesActual = kmMes / rendActual;
+        const litrosMesNuevo = kmMes / rendNuevo;
+
+        let datosGastoActual = [0];
+        let datosGastoNuevo = [0];
+        let ahorroAcumulado = {};
+
+        let acumuladoActual = 0;
+        let acumuladoNuevo = 0;
+
+        for (let mes = 1; mes <= totalMeses; mes++) {
+            const precioLitro = this.calcularPrecioGasolina(mes, tipoGas, usarTendencia);
+
+            acumuladoActual += litrosMesActual * precioLitro;
+            acumuladoNuevo += litrosMesNuevo * precioLitro;
+
+            datosGastoActual.push(Math.round(acumuladoActual));
+            datosGastoNuevo.push(Math.round(acumuladoNuevo));
+
+            // Capturar puntos clave de control temporal solicitados
+            if (mes === 3)  ahorroAcumulado['3m'] = acumuladoActual - acumuladoNuevo;
+            if (mes === 6)  ahorroAcumulado['6m'] = acumuladoActual - acumuladoNuevo;
+            if (mes === 12) ahorroAcumulado['1a'] = acumuladoActual - acumuladoNuevo;
+            if (mes === 60) ahorroAcumulado['5a'] = acumuladoActual - acumuladoNuevo;
+        }
+
+        this.renderizarPanelesUI(ahorroAcumulado);
+        this.actualizarGrafico(datosGastoActual, datosGastoNuevo);
+    }
+
+    renderizarPanelesUI(ahorros) {
+        const formatoMoneda = new Intl.NumberFormat('es-MX', {
+            style: 'currency',
+            currency: 'MXN',
+            maximumFractionDigits: 0
+        });
+
+        this.outputs.m3.innerText = formatoMoneda.format(ahorros['3m']);
+        this.outputs.m6.innerText = formatoMoneda.format(ahorros['6m']);
+        this.outputs.a1.innerText = formatoMoneda.format(ahorros['1a']);
+        this.outputs.a5.innerText = formatoMoneda.format(ahorros['5a']);
+    }
+
+    initChart() {
+        const ctx = document.getElementById('canvas-grafico').getContext('2d');
+        const etiquetasEjeX = this.generarFechasProyeccion(60);
+
+        this.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: etiquetasEjeX,
+                datasets: [
+                    {
+                        label: 'Gasto Vehículo Actual',
+                        data: [],
+                        borderColor: '#dc2626',
+                        backgroundColor: 'rgba(220, 38, 38, 0.05)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: true
+                    },
+                    {
+                        label: 'Gasto Vehículo Nuevo',
+                        data: [],
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(context.parsed.y);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString('es-MX');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    actualizarGrafico(datosActual, datosNuevo) {
+        this.chart.data.datasets[0].data = datosActual;
+        this.chart.data.datasets[1].data = datosNuevo;
+        this.chart.update('none'); // Update fluido sin animaciones toscas al escribir
+    }
+}
+
+// Inicialización del core al cargar el DOM
+document.addEventListener('DOMContentLoaded', () => {
+    new SimuladorConsumo();
+});
+</script>
+</body>
+</html>
