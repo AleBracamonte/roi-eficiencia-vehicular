@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simulador de Ahorro de Combustible</title>
-    <!-- Chart.js para gráficos interactivos -->
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Google Fonts para una tipografía limpia y moderna -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
@@ -55,7 +56,6 @@
             color: var(--text-muted);
         }
 
-        /* Layout Grid Principal */
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -68,7 +68,6 @@
             }
         }
 
-        /* Tarjetas / Paneles */
         .card {
             background: var(--surface-card);
             border: 1px solid var(--border-color);
@@ -86,7 +85,6 @@
             padding-bottom: 0.5rem;
         }
 
-        /* Inputs y Formularios */
         .form-group {
             margin-bottom: 1.25rem;
         }
@@ -119,7 +117,6 @@
             border-color: var(--brand-primary);
         }
 
-        /* Toggle Switch Estilizado */
         .toggle-container {
             display: flex;
             align-items: center;
@@ -160,7 +157,49 @@
         input:checked + .slider { background-color: var(--brand-primary); }
         input:checked + .slider:before { transform: translateX(24px); }
 
-        /* Matriz de KPIs / Ahorros */
+        /* Controles específicos para el Slider del Eje X */
+        .timeline-control-panel {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f1f5f9;
+            border-radius: 8px;
+            border: 1px dashed var(--border-color);
+        }
+
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
+
+        .range-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #cbd5e1;
+            outline: none;
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--brand-primary);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .range-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
         .savings-matrix {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -199,7 +238,7 @@
 
         .chart-container {
             position: relative;
-            height: 350px;
+            height: 380px;
             width: 100%;
             margin-top: 1rem;
         }
@@ -214,14 +253,12 @@
     </header>
 
     <div class="dashboard-grid">
-        <!-- Panel de Control Izquierdo -->
         <aside class="card">
             <div class="card-title">Parámetros del Vehículo</div>
             
             <div class="form-group">
                 <label for="km-mensuales">Kilómetros Recorridos Mensuales</label>
                 <div class="input-wrapper">
-                    <!-- Default: 15000 / 12 = 1250 km al mes -->
                     <input type="number" id="km-mensuales" value="1250" min="1">
                 </div>
             </div>
@@ -269,7 +306,7 @@
             <div class="toggle-container">
                 <div>
                     <label style="font-weight: 500; font-size: 0.9rem;">Habilitar aumento proyectado</label>
-                    <p style="font-size: 0.75rem; color: var(--text-muted);">Tendencia semanal: y = 0.0209x + 13.1</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted);">Crecimiento lineal estimado por semana analítica</p>
                 </div>
                 <label class="switch">
                     <input type="checkbox" id="proyeccion-check" checked>
@@ -278,12 +315,22 @@
             </div>
         </aside>
 
-        <!-- Panel de Gráficos y Resultados Derecho -->
         <main style="display: flex; flex-direction: column; gap: 1.5rem;">
             <div class="card">
                 <div class="card-title">Proyección de Gasto Acumulado Temporal (Semanas Fiscales YYYY.WW)</div>
                 <div class="chart-container">
                     <canvas id="canvas-grafico"></canvas>
+                </div>
+
+                <div class="timeline-control-panel">
+                    <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:0.5rem; color:var(--text-main);">
+                        Ventana de tiempo visible (Horizonte de simulación)
+                    </label>
+                    <input type="range" id="eje-x-slider" class="range-slider" min="0" max="130" value="130">
+                    <div class="slider-labels">
+                        <span id="slider-min-lbl">Hoy</span>
+                        <span id="slider-max-lbl">Semana 260</span>
+                    </div>
                 </div>
             </div>
 
@@ -314,11 +361,14 @@
 
 <script>
 /**
- * ARQUITECTURA CORE ENGINE (SEMANAS FISCALES YYYY.WW)
+ * ARQUITECTURA CORE ENGINE MEJORADA (EJE X INCREMENTAL + PLUGIN ZOOM)
  */
 class SimuladorConsumo {
     constructor() {
         this.chart = null;
+        this.totalSemanas = 260; 
+        this.densidadFiltro = 2; // Guardar datos cada 2 semanas fiscales
+        
         this.initDOMReferences();
         this.initEventListeners();
         this.initChart();
@@ -333,26 +383,38 @@ class SimuladorConsumo {
             tipoGasolina: document.getElementById('tipo-gasolina'),
             precioMagna: document.getElementById('precio-magna'),
             precioPremium: document.getElementById('precio-premium'),
-            permitirTendencia: document.getElementById('proyeccion-check')
+            permitirTendencia: document.getElementById('proyeccion-check'),
+            xSlider: document.getElementById('eje-x-slider')
         };
 
         this.outputs = {
             m3: document.getElementById('ahorro-3m'),
             m6: document.getElementById('ahorro-6m'),
             a1: document.getElementById('ahorro-1a'),
-            a5: document.getElementById('ahorro-5a')
+            a5: document.getElementById('ahorro-5a'),
+            maxLbl: document.getElementById('slider-max-lbl')
         };
     }
 
     initEventListeners() {
-        Object.values(this.inputs).forEach(input => {
+        // Recalcular simulación completa ante cambios en parámetros base
+        const inputsMonitoreados = [
+            this.inputs.kmMensuales, this.inputs.rendimientoActual, 
+            this.inputs.rendimientoNuevo, this.inputs.tipoGasolina, 
+            this.inputs.precioMagna, this.inputs.precioPremium, this.inputs.permitirTendencia
+        ];
+
+        inputsMonitoreados.forEach(input => {
             input.addEventListener('input', () => this.ejecutarSimulacion());
+        });
+
+        // Evento reactivo del slider para alterar límites del Eje X sin recomputar la matemática base
+        this.inputs.xSlider.addEventListener('input', (e) => {
+            const indiceMaximoVisible = parseInt(e.target.value);
+            this.ajustarVentanaEjeX(indiceMaximoVisible);
         });
     }
 
-    /**
-     * Calcula analíticamente la semana exacta del año (1 a 52).
-     */
     obtenerSemanaAño(fecha) {
         const primeroDeAnio = new Date(fecha.getFullYear(), 0, 1);
         const diasTranscurridos = Math.floor((fecha - primeroDeAnio) / (24 * 60 * 60 * 1000));
@@ -361,40 +423,24 @@ class SimuladorConsumo {
     }
 
     /**
-     * Mapea el objeto Date al formato analítico decimal exacto YYYY.WW.
+     * CORRECCIÓN DE LA FÓRMULA DE TENDENCIA:
+     * El parámetro 'semanaIndex' actúa como una variable independiente secuencial delta (X).
+     * Evita el error numérico de usar la nomenclatura visual flotante de los años fiscales.
      */
-    convertirFechaAYYYYWW(fecha) {
-        const anio = fecha.getFullYear();
-        const semana = this.obtenerSemanaAño(fecha);
-        return anio + (semana / 100);
-    }
-
-    /**
-     * Resuelve la función matemática: y = 0.0209x + 13.1
-     * Extrae el delta de crecimiento basado en la escala YYYY.WW.
-     */
-    calcularPrecioGasolina(fechaEvaluada, tipoGasolina, usarTendencia) {
+    calcularPrecioGasolina(semanaIndex, tipoGasolina, usarTendencia) {
         const precioBaseInput = tipoGasolina === 'premium' 
             ? parseFloat(this.inputs.precioPremium.value) 
             : parseFloat(this.inputs.precioMagna.value);
 
         if (!usarTendencia) return precioBaseInput;
 
-        const xHoy = this.convertirFechaAYYYYWW(new Date());
-        const xFuturo = this.convertirFechaAYYYYWW(fechaEvaluada);
-
-        const precioFormulaHoy = (0.0209 * xHoy) + 13.1;
-        const precioFormulaFuturo = (0.0209 * xFuturo) + 13.1;
-
-        const deltaCrecimiento = precioFormulaFuturo - precioFormulaHoy;
-        return precioBaseInput + deltaCrecimiento;
+        // Pendiente normalizada: incremento estimado aproximado de $0.02 MXN por semana fiscal transcurrida
+        const m = 0.0209; 
+        return precioBaseInput + (m * semanaIndex);
     }
 
     ejecutarSimulacion() {
-        const totalSemanas = 260; // 5 Años proyectados de forma exacta (5 * 52)
         const kmMensuales = parseFloat(this.inputs.kmMensuales.value) || 0;
-        
-        // Conversión a escala semanal (mes promedio = 4.3333 semanas)
         const kmSemanales = kmMensuales / 4.3333; 
         
         const rendActual = parseFloat(this.inputs.rendimientoActual.value) || 1;
@@ -415,16 +461,16 @@ class SimuladorConsumo {
 
         let fechaIteracion = new Date();
 
-        for (let semana = 1; semana <= totalSemanas; semana++) {
+        for (let semana = 1; semana <= this.totalSemanas; semana++) {
             fechaIteracion.setDate(fechaIteracion.getDate() + 7);
 
-            const precioLitro = this.calcularPrecioGasolina(fechaIteracion, tipoGas, usarTendencia);
+            // Se pasa el índice indexado limpio para la ecuación temporal
+            const precioLitro = this.calcularPrecioGasolina(semana, tipoGas, usarTendencia);
 
             acumuladoActual += litrosSemanaActual * precioLitro;
             acumuladoNuevo += litrosSemanaNuevo * precioLitro;
 
-            // Filtro de densidad para optimización del gráfico (Muestra datos cada 2 semanas fiscales)
-            if (semana % 2 === 0 || semana === totalSemanas) {
+            if (semana % this.densidadFiltro === 0 || semana === this.totalSemanas) {
                 datosGastoActual.push(Math.round(acumuladoActual));
                 datosGastoNuevo.push(Math.round(acumuladoNuevo));
                 
@@ -433,15 +479,35 @@ class SimuladorConsumo {
                 etiquetasEjeX.push(`${anio}.W${semNum}`);
             }
 
-            // Hitos temporales precisos en formato de semanas
             if (semana === 13)  ahorroAcumulado['3m'] = acumuladoActual - acumuladoNuevo;
             if (semana === 26)  ahorroAcumulado['6m'] = acumuladoActual - acumuladoNuevo;
             if (semana === 52)  ahorroAcumulado['1a'] = acumuladoActual - acumuladoNuevo;
             if (semana === 260) ahorroAcumulado['5a'] = acumuladoActual - acumuladoNuevo;
         }
 
+        // Actualizar datos internos en los arreglos de Chart.js
+        this.chart.data.labels = etiquetasEjeX;
+        this.chart.data.datasets[0].data = datosGastoActual;
+        this.chart.data.datasets[1].data = datosGastoNuevo;
+
+        // Configurar los límites del control del slider en base al tamaño real filtrado del eje X
+        this.inputs.xSlider.max = etiquetasEjeX.length - 1;
+        
+        // Renderizar vistas e interfaz
         this.renderizarPanelesUI(ahorroAcumulado);
-        this.actualizarGrafico(etiquetasEjeX, datosGastoActual, datosGastoNuevo);
+        this.ajustarVentanaEjeX(parseInt(this.inputs.xSlider.value));
+    }
+
+    ajustarVentanaEjeX(indiceMax) {
+        const totalLabels = this.chart.data.labels.length - 1;
+        const indexSanitizado = Math.min(Math.max(indiceMax, 5), totalLabels); 
+        
+        // Forzar límites de renderizado de escalas en Chart.js para simular el recorte de ventana
+        this.chart.options.scales.x.min = this.chart.data.labels[0];
+        this.chart.options.scales.x.max = this.chart.data.labels[indexSanitizado];
+        
+        this.outputs.maxLbl.innerText = this.chart.data.labels[indexSanitizado];
+        this.chart.update('none');
     }
 
     renderizarPanelesUI(ahorros) {
@@ -469,7 +535,7 @@ class SimuladorConsumo {
                         label: 'Gasto Vehículo Actual',
                         data: [],
                         borderColor: '#dc2626',
-                        backgroundColor: 'rgba(220, 38, 38, 0.05)',
+                        backgroundColor: 'rgba(220, 38, 38, 0.03)',
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: true
@@ -478,7 +544,7 @@ class SimuladorConsumo {
                         label: 'Gasto Vehículo Nuevo',
                         data: [],
                         borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                        backgroundColor: 'rgba(37, 99, 235, 0.03)',
                         borderWidth: 2,
                         pointRadius: 0,
                         fill: true
@@ -490,6 +556,18 @@ class SimuladorConsumo {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'top' },
+                    zoom: {
+                        // Configuración del motor de Zoom restrictivo
+                        zoom: {
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: 'x', // Bloquea el zoom vertical; opera únicamente sobre la línea temporal X
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x'
+                        }
+                    },
                     tooltip: {
                         mode: 'index',
                         intersect: false,
@@ -506,7 +584,9 @@ class SimuladorConsumo {
                     }
                 },
                 scales: {
-                    x: { grid: { display: false } },
+                    x: { 
+                        grid: { display: false }
+                    },
                     y: {
                         ticks: {
                             callback: function(value) {
@@ -517,13 +597,6 @@ class SimuladorConsumo {
                 }
             }
         });
-    }
-
-    actualizarGrafico(etiquetas, datosActual, datosNuevo) {
-        this.chart.data.labels = etiquetas;
-        this.chart.data.datasets[0].data = datosActual;
-        this.chart.data.datasets[1].data = datosNuevo;
-        this.chart.update('none');
     }
 }
 
